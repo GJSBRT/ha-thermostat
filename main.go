@@ -17,6 +17,7 @@ import (
 	"gijs.eu/thermostat/internal/fb"
 	"gijs.eu/thermostat/internal/homeassistant"
 	"gijs.eu/thermostat/internal/input"
+	"gijs.eu/thermostat/internal/waveshare"
 )
 
 func main() {
@@ -34,21 +35,59 @@ func main() {
 
 	var disp fb.Display
 	var window *display.Window
+	width, height := cfg.DisplayWidth, cfg.DisplayHeight
+
+	// Resolve the accent color for the development window preview and the
+	// Waveshare driver. The framebuffer backend is monochrome, so it keeps
+	// accent at zero.
+	accent := byte(0)
+	if cfg.Dev || cfg.DisplayDriver == "waveshare" {
+		switch cfg.WSAccent {
+		case "yellow":
+			accent = fb.AccentYellow
+		case "red", "":
+			accent = fb.AccentRed
+		default:
+			log.Fatalf("display: unknown accent color %q", cfg.WSAccent)
+		}
+	}
+
 	if cfg.Dev {
-		window = display.NewWindow(cfg.DisplayWidth, cfg.DisplayHeight, events)
+		window = display.NewWindow(width, height, events)
 		disp = window
 	} else {
-		fbdisp, err := fb.NewFramebuffer(fb.FramebufferConfig{
-			Path:   cfg.DisplayDevice,
-			Width:  cfg.DisplayWidth,
-			Height: cfg.DisplayHeight,
-			Format: cfg.DisplayFormat,
-		})
-		if err != nil {
-			log.Fatalf("display: %v", err)
+		switch cfg.DisplayDriver {
+		case "waveshare":
+			wsd, err := waveshare.New(waveshare.Config{
+				SPIDevice:     cfg.WSSPIDevice,
+				SpeedHz:       cfg.WSSpeedHz,
+				DCPin:         cfg.WSDCPin,
+				ResetPin:      cfg.WSResetPin,
+				BusyPin:       cfg.WSBusyPin,
+				BusyActiveLow: cfg.WSBusyActiveLow,
+				Panel:         cfg.WSPanel,
+				Width:         cfg.DisplayWidth,
+				Height:        cfg.DisplayHeight,
+			})
+			if err != nil {
+				log.Fatalf("display: %v", err)
+			}
+			defer wsd.Close()
+			disp = wsd
+			width, height = wsd.Width(), wsd.Height()
+		default:
+			fbdisp, err := fb.NewFramebuffer(fb.FramebufferConfig{
+				Path:   cfg.DisplayDevice,
+				Width:  width,
+				Height: height,
+				Format: cfg.DisplayFormat,
+			})
+			if err != nil {
+				log.Fatalf("display: %v", err)
+			}
+			defer fbdisp.Close()
+			disp = fbdisp
 		}
-		defer fbdisp.Close()
-		disp = fbdisp
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,13 +108,14 @@ func main() {
 	}
 
 	ctrl := controller.New(controller.Config{
-		Width:        cfg.DisplayWidth,
-		Height:       cfg.DisplayHeight,
+		Width:        width,
+		Height:       height,
 		Step:         cfg.Step,
 		PollInterval: cfg.PollInterval,
 		EditTimeout:  cfg.EditTimeout,
 		HoldDelay:    cfg.HoldDelay,
 		HoldRepeat:   cfg.HoldRepeat,
+		Accent:       accent,
 	}, ha, disp, events)
 
 	go func() {

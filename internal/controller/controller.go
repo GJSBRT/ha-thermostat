@@ -25,6 +25,10 @@ type Config struct {
 	EditTimeout  time.Duration
 	HoldDelay    time.Duration
 	HoldRepeat   time.Duration
+
+	// Accent is the accent ink color (fb.AccentRed or fb.AccentYellow) used for
+	// the target temperature on three-color panels. Zero keeps output monochrome.
+	Accent byte
 }
 
 // Controller owns the shared state and the main event loop.
@@ -69,6 +73,7 @@ func New(cfg Config, ha *homeassistant.Client, disp fb.Display, events <-chan in
 		renderer: fb.NewRenderer(cfg.Width, cfg.Height),
 		events:   events,
 	}
+	c.renderer.Accent = cfg.Accent
 	c.editTimer = time.NewTimer(time.Hour)
 	c.editTimer.Stop()
 	c.repeatTimer = time.NewTimer(time.Hour)

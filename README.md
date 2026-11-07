@@ -18,6 +18,8 @@ in Home Assistant.
   current room temperature, target, mode, and HVAC action all come from Home
   Assistant.
 - UI laid out for a **5" e-paper display** (800×480 by default, B/W "ink" style).
+- **Waveshare three-color e-paper** (black/white/red and black/white/yellow)
+  driven directly over SPI — see the Hardware section.
 - **GPIO buttons** for increase/decrease with **press-and-hold** auto-repeat
   (Linux sysfs, standard library only).
 - **Full-screen temperature** when the target changes; it clears and shows the
@@ -65,7 +67,8 @@ Run `go mod tidy` to finalize the dependency graph and generate `go.sum`:
 go mod tidy
 ```
 
-Development mode (GUI window + keyboard):
+Development mode (GUI window + keyboard). Pass `-display.accent red` (or
+`yellow`) to preview the three-color target temperature in the window:
 
 ```sh
 CGO_ENABLED=0 go run . -dev \
@@ -113,15 +116,38 @@ does not expose it, the program logs a warning and runs without buttons.
 
 ### E-paper panel
 
-The framebuffer backend writes raw pixels to a Linux framebuffer device. For a
+Two device backends are available (select with `-display.driver`):
+
+**Framebuffer** (default) writes raw pixels to a Linux framebuffer device. For a
 5" panel, use a framebuffer driver such as `fbtft` or `epdiy` that exposes the
 panel at `/dev/fb0`, and select the matching pixel format with
 `-display.format` (`gray8`, `rgb565`, or `mono`).
 
-> A raw SPI e-paper controller (Waveshare/Inkplate) needs a controller-specific
-> driver. The `fb.Display` interface is the integration point: implement it and
-> the rest of the thermostat is unchanged.
+**Waveshare** drives a three-color (black/white/red or black/white/yellow)
+panel directly over SPI using the panel's Data/Command, reset, and busy GPIO
+lines. It targets the SSD1680-class command set shared by Waveshare's "B"
+panels (4.2", 5.65", 5.83", and 7.5"):
 
+```sh
+./thermostat -dev=false \
+  -display.driver waveshare \
+  -display.panel 7in5b_v2 \
+  -display.accent red \
+  -display.spi.device /dev/spidev0.0 \
+  -display.gpio.dc 25 -display.gpio.reset 17 -display.gpio.busy 24
+```
+
+`-display.panel` supplies the resolution (see the flag table). The accent
+(`red` or `yellow`) is used for the target temperature; the rest of the UI stays
+black. The same accent is previewed in the development window. The init
+sequence is the standard Waveshare SSD1680 reference and is parameterised by
+resolution, so an unusual panel revision may need a custom sequence in
+`internal/waveshare/panel.go`.
+
+> The panel's native orientation must match the UI (landscape). Portrait
+> panels would additionally need a rotation step in the driver.
+
+### Buttons
 ## Configuration flags
 
 Run `./thermostat -h` for the full list. Notable flags:
@@ -130,7 +156,14 @@ Run `./thermostat -h` for the full list. Notable flags:
 | --- | --- | --- |
 | `-dev` | `true` | GUI window + keyboard; `false` uses the framebuffer device |
 | `-display.width` / `-display.height` | `800` / `480` | Panel resolution |
-| `-display.format` | `gray8` | `gray8`, `rgb565`, `mono` |
+| `-display.format` | `gray8` | `gray8`, `rgb565`, `mono` (framebuffer) |
+| `-display.driver` | `framebuffer` | `framebuffer` or `waveshare` (device builds) |
+| `-display.panel` | *(empty)* | Waveshare preset, e.g. `7in5b_v2`, `5in83b_v2`, `4in2b_v2` |
+| `-display.accent` | `red` | Accent color for three-color panels: `red`, `yellow` |
+| `-display.spi.device` | `/dev/spidev0.0` | SPI device for Waveshare |
+| `-display.spi.speed` | `4000000` | SPI clock speed in Hz |
+| `-display.gpio.dc` / `.reset` / `.busy` | `25` / `17` / `24` | Waveshare control GPIO pins (BCM) |
+| `-display.gpio.busy_active_low` | `false` | Busy signal is active-low |
 | `-ha.url` | `http://homeassistant.local:8123` | Home Assistant URL |
 | `-ha.token` | *(env `THERMOSTAT_HA_TOKEN`)* | Long-lived access token |
 | `-ha.thermostat` | `climate.thermostat` | Climate entity id |
@@ -148,5 +181,6 @@ Run `./thermostat -h` for the full list. Notable flags:
 - `internal/input` — press/release events and sysfs GPIO buttons.
 - `internal/homeassistant` — REST API client (stdlib).
 - `internal/fb` — framebuffer, bitmap font, layout renderer, device writer.
+- `internal/waveshare` — SPI driver for Waveshare three-color e-paper panels.
 - `internal/display` — Ebiten development window (cgo-free).
 - `internal/controller` — the event loop that ties it together.

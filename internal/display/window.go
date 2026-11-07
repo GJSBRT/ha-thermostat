@@ -116,14 +116,26 @@ func (w *Window) Run() {
 }
 
 // frameRGBA converts an ink-coverage frame (0 = white, 255 = black) into RGBA
-// pixels for Ebiten.
+// pixels for Ebiten. When an accent plane is present, red and yellow pixels are
+// rendered in their accent color so the development window previews color
+// e-paper panels.
 func frameRGBA(f *fb.Frame) []byte {
 	rgba := make([]byte, f.Width*f.Height*4)
 	for i, v := range f.Pix {
-		c := 255 - v // 0 black .. 255 white
-		rgba[i*4] = c
-		rgba[i*4+1] = c
-		rgba[i*4+2] = c
+		var r, g, b byte
+		switch {
+		case v >= 128:
+			r, g, b = 0, 0, 0 // black ink
+		case f.Accent != nil && f.Accent[i] == fb.AccentRed:
+			r, g, b = 0xE0, 0x30, 0x30
+		case f.Accent != nil && f.Accent[i] == fb.AccentYellow:
+			r, g, b = 0xF0, 0xC8, 0x20
+		default:
+			r, g, b = 0xFF, 0xFF, 0xFF // paper
+		}
+		rgba[i*4] = r
+		rgba[i*4+1] = g
+		rgba[i*4+2] = b
 		rgba[i*4+3] = 0xFF
 	}
 	return rgba

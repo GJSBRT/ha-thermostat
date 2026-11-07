@@ -16,6 +16,16 @@ type Config struct {
 	DisplayHeight int
 	DisplayFormat string // gray8, rgb565, mono (framebuffer only)
 	DisplayDevice string // framebuffer path (framebuffer only)
+	DisplayDriver string // framebuffer or waveshare (device builds only)
+
+	WSSPIDevice     string
+	WSSpeedHz       int
+	WSDCPin         int
+	WSResetPin      int
+	WSBusyPin       int
+	WSBusyActiveLow bool
+	WSAccent        string // red or yellow
+	WSPanel         string // named Waveshare panel preset
 
 	HAURL            string
 	HAToken          string
@@ -42,8 +52,18 @@ func Load() Config {
 	flag.BoolVar(&c.Dev, "dev", true, "run development mode (GUI window + keyboard controls)")
 	flag.IntVar(&c.DisplayWidth, "display.width", 800, "display width in pixels")
 	flag.IntVar(&c.DisplayHeight, "display.height", 480, "display height in pixels")
+	flag.StringVar(&c.DisplayDriver, "display.driver", "framebuffer", "device display backend: framebuffer, waveshare")
 	flag.StringVar(&c.DisplayFormat, "display.format", "gray8", "framebuffer pixel format: gray8, rgb565, mono")
 	flag.StringVar(&c.DisplayDevice, "display.device", "/dev/fb0", "framebuffer device path (used when -dev=false)")
+
+	flag.StringVar(&c.WSSPIDevice, "display.spi.device", "/dev/spidev0.0", "SPI device for Waveshare e-paper")
+	flag.IntVar(&c.WSSpeedHz, "display.spi.speed", 4000000, "SPI clock speed in Hz")
+	flag.IntVar(&c.WSDCPin, "display.gpio.dc", 25, "Data/Command GPIO pin (BCM)")
+	flag.IntVar(&c.WSResetPin, "display.gpio.reset", 17, "reset GPIO pin (BCM)")
+	flag.IntVar(&c.WSBusyPin, "display.gpio.busy", 24, "busy GPIO pin (BCM)")
+	flag.BoolVar(&c.WSBusyActiveLow, "display.gpio.busy_active_low", false, "busy signal is active-low")
+	flag.StringVar(&c.WSAccent, "display.accent", "red", "accent color for three-color panels: red, yellow")
+	flag.StringVar(&c.WSPanel, "display.panel", "", "Waveshare panel preset (e.g. 7in5b_v2)")
 
 	flag.StringVar(&c.HAURL, "ha.url", "http://homeassistant.local:8123", "Home Assistant base URL")
 	flag.StringVar(&c.HAToken, "ha.token", "", "Home Assistant long-lived access token")

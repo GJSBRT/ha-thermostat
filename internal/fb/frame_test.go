@@ -57,3 +57,40 @@ func TestEncodeMono(t *testing.T) {
 		t.Fatalf("mono byte = %#02x, want 0x81", out[0])
 	}
 }
+
+func TestSetInkAccent(t *testing.T) {
+	f := NewColorFrame(2, 1)
+
+	f.SetInk(0, 0, AccentRed)
+	if f.Pix[0] != White {
+		t.Fatalf("red pixel Pix = %d, want white", f.Pix[0])
+	}
+	if f.Accent[0] != AccentRed {
+		t.Fatalf("red pixel accent = %d, want AccentRed", f.Accent[0])
+	}
+
+	f.SetInk(1, 0, Black)
+	if f.Pix[1] != Black {
+		t.Fatalf("black pixel Pix = %d, want black", f.Pix[1])
+	}
+	if f.Accent[1] != AccentNone {
+		t.Fatalf("black pixel accent = %d, want none", f.Accent[1])
+	}
+
+	f.SetInk(1, 0, AccentNone)
+	if f.Pix[1] != White || f.Accent[1] != AccentNone {
+		t.Fatalf("clearing ink did not reset pixel")
+	}
+}
+
+func TestColorFrameCloneIndependent(t *testing.T) {
+	f := NewColorFrame(1, 1)
+	f.SetInk(0, 0, AccentYellow)
+
+	c := f.Clone()
+	c.SetInk(0, 0, Black)
+
+	if f.Accent[0] != AccentYellow {
+		t.Fatalf("clone mutated the original accent plane")
+	}
+}
