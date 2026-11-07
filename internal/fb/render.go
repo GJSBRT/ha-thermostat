@@ -44,24 +44,24 @@ func (r *Renderer) renderNormal(f *Frame, st state.State) {
 	if st.Action == "idle" {
 		actionColor = Black
 	}
-	f.TextColor(strings.ToUpper(st.Action), m, m, 3, actionColor)
+	f.TextColor(strings.ToUpper(st.Action), m, m, 5, actionColor)
 
 	if !st.HAConnected {
 		status := "HA OFFLINE"
-		f.TextColor(status, f.Width-m-TextWidth(status, 2), m, 2, r.Accent)
+		f.TextColor(status, f.Width-m-TextWidth(status, 5), m, 5, r.Accent)
 	}
 
-	f.Text(fmt.Sprintf("CURRENT %.1f°C", st.CurrentTemp), m, r.Height - m - TextHeight(4), 4)
+	f.Text(fmt.Sprintf("CURRENT %.1f°C", st.CurrentTemp), m, r.Height - m - TextHeight(6), 6)
 
 	if st.OutsideTempSet {
 		outsideString := fmt.Sprintf("OUTSIDE %.1f°C", st.OutsideTemp)
-		f.Text(outsideString, r.Width - m - TextWidth(outsideString, 4), r.Height - m - TextHeight(4), 4)
+		f.Text(outsideString, r.Width - m - TextWidth(outsideString, 6), r.Height - m - TextHeight(6), 6)
 	}
 
-	drawTemp(f, formatTemp(st.TargetTemp), m, (r.Height / 2) - TextHeight(25) + m * 2, 25)
+	drawTemp(f, formatTemp(st.TargetTemp), m, (r.Height / 2) - TextHeight(25), 38)
 
 	if st.HAError != "" {
-		f.TextColor("ERROR: "+truncate(st.HAError, 64), m, r.Height - TextHeight(4) - TextHeight(2) - m * 2, 2, r.Accent)
+		f.TextColor("ERROR: "+truncate(st.HAError, 64), m, r.Height - TextHeight(4) - TextHeight(2) - m * 2, 3, r.Accent)
 	}
 }
 

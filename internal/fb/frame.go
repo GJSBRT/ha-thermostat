@@ -1,12 +1,14 @@
 // Package fb provides the pixel framebuffer model shared by every display
 // backend (the e-paper panel, the device framebuffer, and the development GUI
-// window), plus the bitmap font and screen layout used to render the UI. It is
-// pure standard library and has no GUI or hardware dependencies.
+// window), plus the font rendering and screen layout used to draw the UI. It
+// has no GUI or hardware dependencies beyond the golang.org/x/image font stack.
 package fb
 
 import (
 	"image"
-	"unicode"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
 )
 
 // Frame is a grayscale image with an optional accent-color plane.
@@ -173,58 +175,81 @@ func (f *Frame) clampRect(x0, y0, x1, y1 int) (int, int, int, int) {
 	return x0, y0, x1, y1
 }
 
-// DrawGlyph draws a single 5x7 glyph with its top-left corner at (x, y),
-// scaled by scale (each font pixel becomes a scale-by-scale block). The glyph is
-// drawn in black ink.
-func (f *Frame) DrawGlyph(g [7]byte, x, y, scale int) {
-	f.drawGlyph(g, x, y, scale, Black)
-}
-
-// DrawGlyphColor draws a single glyph in the given ink color.
-func (f *Frame) DrawGlyphColor(g [7]byte, x, y, scale int, ink byte) {
-	f.drawGlyph(g, x, y, scale, ink)
-}
-
-func (f *Frame) drawGlyph(g [7]byte, x, y, scale int, ink byte) {
-	for row := 0; row < 7; row++ {
-		for col := 0; col < 5; col++ {
-			if g[row]>>uint(col)&1 != 0 {
-				f.FillInk(x+col*scale, y+row*scale, x+(col+1)*scale-1, y+(row+1)*scale-1, ink)
-			}
-		}
-	}
-}
-
 // Text draws s with its top-left corner at (x, y) in black and returns the
-// advance width in pixels. Unknown runes are rendered as spaces.
+// advance width in pixels.
 func (f *Frame) Text(s string, x, y, scale int) int {
 	return f.TextColor(s, x, y, scale, Black)
 }
 
 // TextColor draws s in the given ink color and returns the advance width.
+//
+// Text is rasterized from the embedded sans-serif font with anti-aliasing, so
+// black text accumulates grayscale ink in the frame. Accent text is thresholded
+// because the e-paper accent plane is binary and cannot represent shades.
 func (f *Frame) TextColor(s string, x, y, scale int, ink byte) int {
-	cx := x
-	for _, r := range s {
-		g, ok := font5x7[unicode.ToUpper(r)]
-		if !ok {
-			g = font5x7[' ']
-		}
-		f.drawGlyph(g, cx, y, scale, ink)
-		cx += 6 * scale
+	face := faceForScale(scale)
+	m := face.Metrics()
+
+	width := font.MeasureString(face, s).Ceil()
+	ascent := m.Ascent.Ceil()
+	height := ascent + m.Descent.Ceil()
+
+	mask := image.NewAlpha(image.Rect(0, 0, width, height))
+	d := &font.Drawer{
+		Dst:  mask,
+		Src:  image.White,
+		Face: face,
+		Dot:  fixed.P(0, ascent),
 	}
-	return cx - x
+	d.DrawString(s)
+
+	f.blitMask(mask, x, y, ink)
+	return width
+}
+
+// blitMask composites an anti-aliased coverage mask into the frame with its
+// top-left corner at (x, y). Black ink darkens the grayscale Pix plane; accent
+// ink is written as a solid color where coverage crosses the threshold.
+func (f *Frame) blitMask(mask *image.Alpha, x, y int, ink byte) {
+	b := mask.Bounds()
+	for py := b.Min.Y; py < b.Max.Y; py++ {
+		for px := b.Min.X; px < b.Max.X; px++ {
+			cov := mask.AlphaAt(px, py).A
+			if cov == 0 {
+				continue
+			}
+			tx := x + px - b.Min.X
+			ty := y + py - b.Min.Y
+			if tx < 0 || ty < 0 || tx >= f.Width || ty >= f.Height {
+				continue
+			}
+			i := ty*f.Width + tx
+			switch ink {
+			case Black:
+				if cov > f.Pix[i] {
+					f.Pix[i] = cov
+				}
+				if f.Accent != nil {
+					f.Accent[i] = AccentNone
+				}
+			case AccentRed, AccentYellow:
+				if cov >= 128 {
+					f.ensureAccent()
+					f.Pix[i] = White
+					f.Accent[i] = ink
+				}
+			}
+		}
+	}
 }
 
 // TextWidth returns the pixel width of s rendered at the given scale.
 func TextWidth(s string, scale int) int {
-	n := 0
-	for range s {
-		n++
-	}
-	return n * 6 * scale
+	return font.MeasureString(faceForScale(scale), s).Ceil()
 }
 
 // TextHeight returns the pixel height of text rendered at the given scale.
+// The face is sized at 7*scale pixels, so this matches the requested em size.
 func TextHeight(scale int) int {
 	return 7 * scale
 }

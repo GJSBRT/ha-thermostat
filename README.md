@@ -28,8 +28,9 @@ in Home Assistant.
   new value large with the current room temperature as helper text.
 - Standard library as much as possible: HTTP/JSON, flags, GPIO sysfs, and the
   framebuffer renderer all use `net/http`, `encoding/json`, `flag`, `os`, and a
-  hand-drawn bitmap font. The only external dependency is Ebiten (GUI window,
-  cgo-free).
+  smooth anti-aliased sans-serif font. The only external dependencies are
+  Ebiten (GUI window, cgo-free) and `golang.org/x/image` (font loading and
+  rasterization, cgo-free).
 
 ## How it works
 
@@ -183,7 +184,7 @@ Run `./thermostat -h` for the full list. Notable flags:
 - `internal/state` — shared display/snapshot model.
 - `internal/input` — press/release events and sysfs GPIO buttons.
 - `internal/homeassistant` — REST API client (stdlib).
-- `internal/fb` — framebuffer, bitmap font, layout renderer, device writer.
+- `internal/fb` — framebuffer, font rendering, layout renderer, device writer.
 - `internal/waveshare` — SPI driver for Waveshare three-color e-paper panels.
 - `internal/display` — Ebiten development window (cgo-free).
 - `internal/controller` — the event loop that ties it together.

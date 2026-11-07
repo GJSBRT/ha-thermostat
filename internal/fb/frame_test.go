@@ -3,11 +3,27 @@ package fb
 import "testing"
 
 func TestTextWidth(t *testing.T) {
-	if got, want := TextWidth("21.5", 1), 4*6; got != want {
-		t.Fatalf("TextWidth(\"21.5\", 1) = %d, want %d", got, want)
+	if got := TextWidth("", 1); got != 0 {
+		t.Fatalf("TextWidth(\"\", 1) = %d, want 0", got)
 	}
-	if got, want := TextWidth("°C", 2), 2*6*2; got != want {
-		t.Fatalf("TextWidth(\"°C\", 2) = %d, want %d", got, want)
+	if got := TextWidth("21.5", 1); got <= 0 {
+		t.Fatalf("TextWidth(\"21.5\", 1) = %d, want > 0", got)
+	}
+}
+
+func TestTextRendersInk(t *testing.T) {
+	f := NewFrame(64, 32)
+	f.Text("A", 0, 0, 2)
+
+	found := false
+	for _, v := range f.Pix {
+		if v > 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Text did not set any ink")
 	}
 }
 

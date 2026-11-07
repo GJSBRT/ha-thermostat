@@ -124,14 +124,16 @@ func frameRGBA(f *fb.Frame) []byte {
 	for i, v := range f.Pix {
 		var r, g, b byte
 		switch {
-		case v >= 128:
-			r, g, b = 0, 0, 0 // black ink
 		case f.Accent != nil && f.Accent[i] == fb.AccentRed:
 			r, g, b = 0xE0, 0x30, 0x30
 		case f.Accent != nil && f.Accent[i] == fb.AccentYellow:
 			r, g, b = 0xF0, 0xC8, 0x20
 		default:
-			r, g, b = 0xFF, 0xFF, 0xFF // paper
+			// Grayscale ink: 0 is paper white, 255 is solid black. Rendering the
+			// full range here (rather than thresholding) keeps the anti-aliased
+			// font smooth in the development window.
+			lvl := 255 - v
+			r, g, b = lvl, lvl, lvl
 		}
 		rgba[i*4] = r
 		rgba[i*4+1] = g
