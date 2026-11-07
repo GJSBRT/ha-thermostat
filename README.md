@@ -68,7 +68,7 @@ go mod tidy
 Development mode (GUI window + keyboard):
 
 ```sh
-CGO_ENABLED=0 go run ./cmd/thermostat -dev \
+CGO_ENABLED=0 go run . -dev \
   -ha.url http://your-home-assistant:8123 \
   -ha.token YOUR_LONG_LIVED_TOKEN
 ```
@@ -76,7 +76,7 @@ CGO_ENABLED=0 go run ./cmd/thermostat -dev \
 Device build (no GUI, writes to a framebuffer-backed e-paper panel):
 
 ```sh
-CGO_ENABLED=0 go build -o thermostat ./cmd/thermostat
+CGO_ENABLED=0 go build -o thermostat .
 ./thermostat -dev=false -display.device /dev/fb0
 ```
 
