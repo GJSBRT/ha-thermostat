@@ -30,6 +30,7 @@ func main() {
 		BaseURL:          cfg.HAURL,
 		Token:            cfg.HAToken,
 		ThermostatEntity: cfg.HAThermostat,
+		OutsideEntity:    cfg.HAOutside,
 		Timeout:          cfg.HATimeout,
 	})
 

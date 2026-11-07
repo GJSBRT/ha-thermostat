@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,7 @@ type Config struct {
 	BaseURL          string
 	Token            string // long-lived access token
 	ThermostatEntity string // e.g. climate.thermostat
+	OutsideEntity    string // e.g. sensor.outside_temperature (empty disables)
 	Timeout          time.Duration
 }
 
@@ -73,6 +75,27 @@ func (c *Client) SetTargetTemperature(temp float64) error {
 		"entity_id":   c.cfg.ThermostatEntity,
 		"temperature": temp,
 	})
+}
+
+// OutsideTemperature fetches the numeric state of the optional outside
+// temperature entity. It returns ok=false when no entity is configured or the
+// entity's state is not a usable number; the caller should then hide the
+// outside readout.
+func (c *Client) OutsideTemperature() (temp float64, ok bool, err error) {
+	if c.cfg.OutsideEntity == "" {
+		return 0, false, nil
+	}
+	var raw struct {
+		State string `json:"state"`
+	}
+	if err := c.get("/api/states/"+c.cfg.OutsideEntity, &raw); err != nil {
+		return 0, false, err
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw.State), 64)
+	if err != nil {
+		return 0, false, nil
+	}
+	return v, true, nil
 }
 
 func (c *Client) get(path string, out any) error {

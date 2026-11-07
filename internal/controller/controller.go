@@ -180,6 +180,14 @@ func (c *Controller) refreshHA() {
 	c.st.TargetTemp = ts.TargetTemp
 	c.st.Mode = ts.Mode
 	c.st.Action = ts.Action
+
+	c.st.OutsideTempSet = false
+	if outside, ok, err := c.ha.OutsideTemperature(); err != nil {
+		log.Printf("outside temperature: %v", err)
+	} else if ok {
+		c.st.OutsideTemp = outside
+		c.st.OutsideTempSet = true
+	}
 }
 
 func (c *Controller) render() {

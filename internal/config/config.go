@@ -30,6 +30,7 @@ type Config struct {
 	HAURL            string
 	HAToken          string
 	HAThermostat     string
+	HAOutside        string
 	HATimeout        time.Duration
 
 	Step         float64
@@ -68,6 +69,7 @@ func Load() Config {
 	flag.StringVar(&c.HAURL, "ha.url", "http://homeassistant.local:8123", "Home Assistant base URL")
 	flag.StringVar(&c.HAToken, "ha.token", "", "Home Assistant long-lived access token")
 	flag.StringVar(&c.HAThermostat, "ha.thermostat", "climate.thermostat", "thermostat (climate) entity id")
+	flag.StringVar(&c.HAOutside, "ha.outside", "", "outside temperature (sensor) entity id; empty hides the readout")
 	flag.DurationVar(&c.HATimeout, "ha.timeout", 5*time.Second, "Home Assistant request timeout")
 
 	flag.Float64Var(&c.Step, "step", 0.5, "temperature change per button/key press (degrees C)")

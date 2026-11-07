@@ -41,7 +41,7 @@ func (r *Renderer) renderNormal(f *Frame, st state.State) {
 	m := 24
 
 	actionColor := r.Accent
-	if st.Action == "IDLE" {
+	if st.Action == "idle" {
 		actionColor = Black
 	}
 	f.TextColor(strings.ToUpper(st.Action), m, m, 3, actionColor)
@@ -52,6 +52,11 @@ func (r *Renderer) renderNormal(f *Frame, st state.State) {
 	}
 
 	f.Text(fmt.Sprintf("CURRENT %.1f°C", st.CurrentTemp), m, r.Height - m - TextHeight(4), 4)
+
+	if st.OutsideTempSet {
+		outsideString := fmt.Sprintf("OUTSIDE %.1f°C", st.OutsideTemp)
+		f.Text(outsideString, r.Width - m - TextWidth(outsideString, 4), r.Height - m - TextHeight(4), 4)
+	}
 
 	drawTemp(f, formatTemp(st.TargetTemp), m, (r.Height / 2) - TextHeight(25) + m * 2, 25)
 

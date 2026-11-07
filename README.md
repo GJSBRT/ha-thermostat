@@ -17,6 +17,8 @@ in Home Assistant.
 - Reads a **generic thermostat entity** in Home Assistant for its state — the
   current room temperature, target, mode, and HVAC action all come from Home
   Assistant.
+- Optionally reads a **separate outside temperature entity** and shows it in the
+  bottom-left corner.
 - UI laid out for a **5" e-paper display** (800×480 by default, B/W "ink" style).
 - **Waveshare three-color e-paper** (black/white/red and black/white/yellow)
   driven directly over SPI — see the Hardware section.
@@ -167,6 +169,7 @@ Run `./thermostat -h` for the full list. Notable flags:
 | `-ha.url` | `http://homeassistant.local:8123` | Home Assistant URL |
 | `-ha.token` | *(env `THERMOSTAT_HA_TOKEN`)* | Long-lived access token |
 | `-ha.thermostat` | `climate.thermostat` | Climate entity id |
+| `-ha.outside` | *(empty)* | Outside temperature (sensor) entity id; empty hides the readout |
 | `-step` | `0.5` | Degrees per press |
 | `-edit.timeout` | `3s` | Full-screen duration after a change |
 | `-hold.delay` | `400ms` | Hold time before auto-repeat begins |

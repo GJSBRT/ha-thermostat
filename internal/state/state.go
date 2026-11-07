@@ -13,6 +13,12 @@ type State struct {
 	Mode        string  // heat, cool, heat_cool, auto, off
 	Action      string  // idle, heating, cooling, off
 
+	// Outside temperature, read from a separate Home Assistant entity. It is
+	// displayed only when OutsideTempSet is true (an entity is configured and
+	// returns a numeric value).
+	OutsideTemp    float64
+	OutsideTempSet bool
+
 	// Connectivity.
 	HAConnected bool
 	HAError     string
