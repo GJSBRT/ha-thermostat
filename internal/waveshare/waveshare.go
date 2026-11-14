@@ -133,18 +133,25 @@ func (d *Display) init() error {
 	return nil
 }
 
-// Show renders a frame by sending the black plane (command 0x10), the accent
+// Show renders a frame by sending the black plane (command 0x10), the color
 // plane (command 0x13), and then refreshing the panel (command 0x12).
+//
+// The panel is four-color (black/white/red/yellow): the two planes encode two
+// bits per pixel, where the fourth combination (both bits set) selects yellow.
+// So the black plane is set for black and yellow pixels, and the color plane is
+// set for red and yellow pixels.
 func (d *Display) Show(frame *fb.Frame) error {
 	if frame.Width != d.width || frame.Height != d.height {
 		return fmt.Errorf("frame %dx%d does not match panel %dx%d", frame.Width, frame.Height, d.width, d.height)
 	}
 
 	black := packPlane(d.width, d.height, func(x, y int) bool {
-		return frame.Pix[y*d.width+x] >= 128
+		i := y*d.width + x
+		return frame.Pix[i] >= 128 || (frame.Accent != nil && frame.Accent[i] == fb.AccentYellow)
 	})
-	accent := packPlane(d.width, d.height, func(x, y int) bool {
-		return frame.Accent != nil && frame.Accent[y*d.width+x] != fb.AccentNone
+	color := packPlane(d.width, d.height, func(x, y int) bool {
+		i := y*d.width + x
+		return frame.Accent != nil && frame.Accent[i] != fb.AccentNone
 	})
 
 	if err := d.sendCommand(0x10); err != nil { // DTM1: black plane
@@ -153,10 +160,10 @@ func (d *Display) Show(frame *fb.Frame) error {
 	if err := d.sendData(black); err != nil {
 		return err
 	}
-	if err := d.sendCommand(0x13); err != nil { // DTM2: accent plane
+	if err := d.sendCommand(0x13); err != nil { // DTM2: color (red/yellow) plane
 		return err
 	}
-	if err := d.sendData(accent); err != nil {
+	if err := d.sendData(color); err != nil {
 		return err
 	}
 	if err := d.sendCommand(0x12); err != nil { // DRF: refresh
