@@ -30,12 +30,19 @@ func (p *gpioPin) open(chip string, dir gpio.Direction, consumer string) error {
 
 // set drives an output pin high or low.
 func (p *gpioPin) set(high bool) error {
-	return p.line.Set(high)
+	if err := p.line.Set(high); err != nil {
+		return fmt.Errorf("gpio %d set: %w", p.num, err)
+	}
+	return nil
 }
 
 // read returns the current state of an input pin (true = high).
 func (p *gpioPin) read() (bool, error) {
-	return p.line.Get()
+	high, err := p.line.Get()
+	if err != nil {
+		return false, fmt.Errorf("gpio %d read: %w", p.num, err)
+	}
+	return high, nil
 }
 
 // close releases the pin.

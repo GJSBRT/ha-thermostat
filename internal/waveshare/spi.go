@@ -32,6 +32,10 @@ type spiIOCTransfer struct {
 	pad         uint16
 }
 
+// Compile-time guard: the ioctl request codes encode this struct's size, so it
+// must stay 32 bytes (matching the kernel's struct spi_ioc_transfer).
+var _ [32]byte = [unsafe.Sizeof(spiIOCTransfer{})]byte{}
+
 // spiDevice is a Linux spidev file descriptor configured for the e-paper panel.
 type spiDevice struct {
 	fd int
@@ -118,13 +122,17 @@ func (d *spiDevice) write(tx []byte) error {
 	runtime.KeepAlive(transfers)
 	runtime.KeepAlive(tx)
 	runtime.KeepAlive(rx)
-	return err
+	if err != nil {
+		return fmt.Errorf("spi write %d bytes in %d transfers: %w", len(tx), chunks, err)
+	}
+	return nil
 }
 
 // spiMaxChunk is the largest single transfer issued within a message. The
 // Raspberry Pi SPI controller limits individual transfers (its DMA length field
-// is 16-bit, and some kernels impose a smaller cap), so frame data is chunked.
-const spiMaxChunk = 4096
+// is 16-bit, and some kernels enforce a smaller cap), so frame data is chunked.
+// 512 bytes is deliberately conservative to stay under any observed limit.
+const spiMaxChunk = 512
 
 // spiIOCMessage returns the SPI_IOC_MESSAGE(n) request code, carrying n
 // spi_ioc_transfer structs (32 bytes each) in a single ioctl.

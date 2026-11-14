@@ -70,6 +70,11 @@ type gpioHandleData struct {
 	values [64]uint8
 }
 
+// Compile-time guards: the ioctl request codes encode these struct sizes, so
+// they must match the kernel ABI exactly.
+var _ [364]byte = [unsafe.Sizeof(gpioHandleRequest{})]byte{}
+var _ [64]byte = [unsafe.Sizeof(gpioHandleData{})]byte{}
+
 // Open requests a single GPIO line and returns a handle for reading/writing it.
 func Open(cfg Config) (*Line, error) {
 	if cfg.Chip == "" {
