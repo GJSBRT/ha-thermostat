@@ -1,6 +1,9 @@
 package waveshare
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
 func TestPackPlane(t *testing.T) {
 	// 10 pixels wide -> 2 bytes per row, with the last 6 bits padded.
@@ -30,5 +33,20 @@ func TestLookupPanel(t *testing.T) {
 
 	if _, ok := lookupPanel("not-a-panel"); ok {
 		t.Fatal("unknown panel name unexpectedly matched")
+	}
+}
+
+func TestSPIStructSize(t *testing.T) {
+	if got := unsafe.Sizeof(spiIOCTransfer{}); got != 32 {
+		t.Fatalf("spiIOCTransfer size = %d, want 32", got)
+	}
+}
+
+func TestSPIIOCMessage(t *testing.T) {
+	if got := spiIOCMessage(1); got != 0x40206b00 {
+		t.Fatalf("spiIOCMessage(1) = %#x, want 0x40206b00", got)
+	}
+	if got := spiIOCMessage(2); got != 0x40406b00 {
+		t.Fatalf("spiIOCMessage(2) = %#x, want 0x40406b00", got)
 	}
 }

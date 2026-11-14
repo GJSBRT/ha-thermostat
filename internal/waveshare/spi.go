@@ -14,8 +14,7 @@ import (
 const (
 	spiIOCWrMode        = 0x40016b01 // _IOW('k', 1, uint8)
 	spiIOCWrBitsPerWord = 0x40016b03 // _IOW('k', 3, uint8)
-	spiIOCWrMaxSpeedHz  = 0x40046b04 // _IOW('k', 5, uint32)
-	spiIOCMessage1      = 0x40206b00 // _IOW('k', 0, char[32]) — one transfer
+	spiIOCWrMaxSpeedHz  = 0x40046b04 // _IOW('k', 4, uint32)
 )
 
 // spiIOCTransfer mirrors the kernel's struct spi_ioc_transfer. The field order
@@ -87,22 +86,49 @@ func (d *spiDevice) ioctl(req uintptr, arg unsafe.Pointer) error {
 	return nil
 }
 
-// write sends tx bytes full-duplex over SPI, discarding the received data.
+// write sends tx bytes full-duplex over SPI, discarding the received data. A
+// single logical write may exceed the controller's per-transfer limit, so it is
+// split into multiple transfers that are submitted together as one SPI message;
+// this keeps chip select asserted across the whole write.
 func (d *spiDevice) write(tx []byte) error {
 	if len(tx) == 0 {
 		return nil
 	}
+
+	chunks := (len(tx) + spiMaxChunk - 1) / spiMaxChunk
+	transfers := make([]spiIOCTransfer, chunks)
 	rx := make([]byte, len(tx))
-	msg := spiIOCTransfer{
-		txBuf:  uint64(uintptr(unsafe.Pointer(&tx[0]))),
-		rxBuf:  uint64(uintptr(unsafe.Pointer(&rx[0]))),
-		length: uint32(len(tx)),
+
+	for i := 0; i < chunks; i++ {
+		off := i * spiMaxChunk
+		n := len(tx) - off
+		if n > spiMaxChunk {
+			n = spiMaxChunk
+		}
+		transfers[i] = spiIOCTransfer{
+			txBuf:  uint64(uintptr(unsafe.Pointer(&tx[off]))),
+			rxBuf:  uint64(uintptr(unsafe.Pointer(&rx[off]))),
+			length: uint32(n),
+		}
 	}
-	err := d.ioctl(spiIOCMessage1, unsafe.Pointer(&msg))
+
+	err := d.ioctl(spiIOCMessage(chunks), unsafe.Pointer(&transfers[0]))
 	// Keep the buffers alive until the synchronous ioctl completes; the syscall
 	// captures only raw pointers.
-	runtime.KeepAlive(msg)
+	runtime.KeepAlive(transfers)
 	runtime.KeepAlive(tx)
 	runtime.KeepAlive(rx)
 	return err
+}
+
+// spiMaxChunk is the largest single transfer issued within a message. The
+// Raspberry Pi SPI controller limits individual transfers (its DMA length field
+// is 16-bit, and some kernels impose a smaller cap), so frame data is chunked.
+const spiMaxChunk = 4096
+
+// spiIOCMessage returns the SPI_IOC_MESSAGE(n) request code, carrying n
+// spi_ioc_transfer structs (32 bytes each) in a single ioctl.
+func spiIOCMessage(n int) uintptr {
+	// _IOW(0x6b, 0, char[n*32]) = write(1<<30) | magic(0x6b<<8) | size((n*32)<<16)
+	return uintptr(0x40006b00 | uint32(n)*32<<16)
 }
