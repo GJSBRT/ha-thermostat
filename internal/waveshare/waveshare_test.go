@@ -3,32 +3,50 @@ package waveshare
 import (
 	"testing"
 	"unsafe"
+
+	"gijs.eu/thermostat/internal/fb"
 )
 
-func TestPackPlane(t *testing.T) {
-	// 10 pixels wide -> 2 bytes per row, with the last 6 bits padded.
-	got := packPlane(10, 1, func(x, y int) bool {
-		return x == 0 || x == 7
-	})
-	if len(got) != 2 {
-		t.Fatalf("stride = %d bytes, want 2", len(got))
+func TestPack4Color(t *testing.T) {
+	// Four pixels across -> one byte, with the leftmost pixel in the two most
+	// significant bits.
+	pix := []byte{255, 0, 0, 0}                          // black, white, white, white
+	accent := []byte{0, 0, fb.AccentYellow, fb.AccentRed} // none, none, yellow, red
+	got := pack4Color(4, 1, pix, accent)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
 	}
-	// Bit 7 (leftmost pixel 0) and bit 0 (pixel 7) set in the first byte.
-	if got[0] != 0x81 {
-		t.Fatalf("first byte = %#02x, want 0x81", got[0])
+	// black=00, white=01, yellow=10, red=11 -> 0b00_01_10_11 = 0x1B
+	if got[0] != 0x1B {
+		t.Fatalf("byte = %#02x, want 0x1B", got[0])
 	}
-	if got[1] != 0x00 {
-		t.Fatalf("second byte = %#02x, want 0x00 (padding)", got[1])
+}
+
+func TestPixelCode(t *testing.T) {
+	cases := []struct {
+		pix    byte
+		accent []byte
+		want   byte
+	}{
+		{255, nil, 0},              // black
+		{0, nil, 1},                // white
+		{0, []byte{fb.AccentRed}, 3},    // red
+		{0, []byte{fb.AccentYellow}, 2}, // yellow
+	}
+	for _, c := range cases {
+		if got := pixelCode(c.pix, c.accent, 0); got != c.want {
+			t.Fatalf("pixelCode(%d, %v) = %d, want %d", c.pix, c.accent, got, c.want)
+		}
 	}
 }
 
 func TestLookupPanel(t *testing.T) {
-	p, ok := lookupPanel("7in5b_v2")
+	p, ok := lookupPanel("4in26g")
 	if !ok {
-		t.Fatal("7in5b_v2 preset not found")
+		t.Fatal("4in26g preset not found")
 	}
-	if p.width != 800 || p.height != 480 {
-		t.Fatalf("7in5b_v2 = %dx%d, want 800x480", p.width, p.height)
+	if p.width != 800 || p.height != 480 || p.initHeight != 680 {
+		t.Fatalf("4in26g = %dx%d (init %d), want 800x480 (init 680)", p.width, p.height, p.initHeight)
 	}
 
 	if _, ok := lookupPanel("not-a-panel"); ok {

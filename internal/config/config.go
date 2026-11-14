@@ -65,7 +65,7 @@ func Load() Config {
 	flag.IntVar(&c.WSDCPin, "display.gpio.dc", 25, "Data/Command GPIO pin (BCM)")
 	flag.IntVar(&c.WSResetPin, "display.gpio.reset", 17, "reset GPIO pin (BCM)")
 	flag.IntVar(&c.WSBusyPin, "display.gpio.busy", 24, "busy GPIO pin (BCM)")
-	flag.BoolVar(&c.WSBusyActiveLow, "display.gpio.busy_active_low", false, "busy signal is active-low")
+	flag.BoolVar(&c.WSBusyActiveLow, "display.gpio.busy_active_low", true, "busy signal is active-low")
 	flag.StringVar(&c.WSAccent, "display.accent", "red", "accent color for three-color panels: red, yellow")
 	flag.StringVar(&c.WSPanel, "display.panel", "", "Waveshare panel preset (e.g. 7in5b_v2)")
 

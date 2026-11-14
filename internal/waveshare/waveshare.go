@@ -1,11 +1,10 @@
-// Package waveshare implements fb.Display for Waveshare three-color e-paper
-// panels (black/white/red and black/white/yellow) driven over SPI with
-// Data/Command, reset, and busy GPIO lines.
+// Package waveshare implements fb.Display for the Waveshare 4.26" four-color
+// e-paper panel (black/white/red/yellow) driven over SPI with Data/Command,
+// reset, and busy GPIO lines.
 //
-// The driver targets the SSD1680-class command set shared by Waveshare's
-// three-color "B" panels (4.2", 5.65", 5.83", and 7.5"). It is Linux-only: it
-// talks to /dev/spidev and the GPIO character device (/dev/gpiochipN), matching
-// the button input package.
+// The driver targets the SSD2677 controller used by the 4.26" (G) panel. It is
+// Linux-only: it talks to /dev/spidev and the GPIO character device
+// (/dev/gpiochipN), matching the button input package.
 package waveshare
 
 import (
@@ -16,24 +15,24 @@ import (
 	"gijs.eu/thermostat/internal/gpio"
 )
 
-// Config configures a Waveshare three-color e-paper panel.
+// Config configures the four-color e-paper panel.
 type Config struct {
 	SPIDevice string // e.g. /dev/spidev0.0
 	SpeedHz   int    // SPI clock; 0 means 4 MHz
 	GPIOchip  string // gpiochip device, e.g. /dev/gpiochip0
 
-	DCPin         int // Data/Command GPIO (BCM numbering)
-	ResetPin      int // reset GPIO
-	BusyPin       int // busy input GPIO
+	DCPin         int  // Data/Command GPIO (BCM numbering)
+	ResetPin      int  // reset GPIO
+	BusyPin       int  // busy input GPIO
 	BusyActiveLow bool // busy reads low while the panel is refreshing
 
-	Panel string // named preset, e.g. "7in5b_v2"
+	Panel string // named preset, e.g. "4in26g"
 
 	Width  int // used when Panel is empty/unknown
 	Height int
 }
 
-// Display drives a single Waveshare panel.
+// Display drives the four-color panel.
 type Display struct {
 	spi     *spiDevice
 	dc      *gpioPin
@@ -41,8 +40,9 @@ type Display struct {
 	busy    *gpioPin
 	busyLow bool
 
-	width  int
-	height int
+	width      int
+	height     int
+	initHeight int
 }
 
 // New opens the SPI device, configures the GPIO pins, and initializes the
@@ -53,8 +53,12 @@ func New(cfg Config) (*Display, error) {
 	}
 
 	width, height := cfg.Width, cfg.Height
+	initHeight := height
 	if p, ok := lookupPanel(cfg.Panel); ok {
 		width, height = p.width, p.height
+		if p.initHeight != 0 {
+			initHeight = p.initHeight
+		}
 	}
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("invalid panel resolution %dx%d", width, height)
@@ -69,13 +73,14 @@ func New(cfg Config) (*Display, error) {
 	}
 
 	d := &Display{
-		spi:     spi,
-		dc:      &gpioPin{num: cfg.DCPin},
-		reset:   &gpioPin{num: cfg.ResetPin},
-		busy:    &gpioPin{num: cfg.BusyPin},
-		busyLow: cfg.BusyActiveLow,
-		width:   width,
-		height:  height,
+		spi:        spi,
+		dc:         &gpioPin{num: cfg.DCPin},
+		reset:      &gpioPin{num: cfg.ResetPin},
+		busy:       &gpioPin{num: cfg.BusyPin},
+		busyLow:    cfg.BusyActiveLow,
+		width:      width,
+		height:     height,
+		initHeight: initHeight,
 	}
 
 	if err := d.dc.open(cfg.GPIOchip, gpio.Output, "thermostat-dc"); err != nil {
@@ -98,24 +103,34 @@ func New(cfg Config) (*Display, error) {
 	return d, nil
 }
 
-// Width returns the panel width resolved from the preset or explicit flags.
+// Width returns the visible panel width.
 func (d *Display) Width() int { return d.width }
 
-// Height returns the panel height resolved from the preset or explicit flags.
+// Height returns the visible panel height.
 func (d *Display) Height() int { return d.height }
 
-// init resets the panel and runs the controller initialization sequence.
+// init resets the panel and runs the SSD2677 initialization sequence.
 func (d *Display) init() error {
-	if err := d.reset.set(false); err != nil {
-		return err
-	}
-	time.Sleep(20 * time.Millisecond)
+	// Hardware reset: high, low pulse, high, matching the reference timings.
 	if err := d.reset.set(true); err != nil {
 		return err
 	}
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	if err := d.reset.set(false); err != nil {
+		return err
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := d.reset.set(true); err != nil {
+		return err
+	}
+	time.Sleep(200 * time.Millisecond)
 
-	for _, c := range initCommands(d.width, d.height) {
+	if err := d.waitBusy(); err != nil {
+		return err
+	}
+	time.Sleep(30 * time.Millisecond)
+
+	for _, c := range initCommands(d.width, d.initHeight) {
 		if err := d.sendCommand(c.cmd); err != nil {
 			return err
 		}
@@ -124,7 +139,9 @@ func (d *Display) init() error {
 				return err
 			}
 		}
-		if c.cmd == 0x04 { // power on must settle before the next command
+		// The reference waits for the controller after the resolution and
+		// power-on commands.
+		if c.cmd == 0x61 || c.cmd == 0x04 {
 			if err := d.waitBusy(); err != nil {
 				return err
 			}
@@ -133,50 +150,75 @@ func (d *Display) init() error {
 	return nil
 }
 
-// Show renders a frame by sending the black plane (command 0x10), the color
-// plane (command 0x13), and then refreshing the panel (command 0x12).
-//
-// The panel is four-color (black/white/red/yellow): the two planes encode two
-// bits per pixel, where the fourth combination (both bits set) selects yellow.
-// So the black plane is set for black and yellow pixels, and the color plane is
-// set for red and yellow pixels.
+// Show renders a frame. The SSD2677 takes 2 bits per pixel (four colors) packed
+// four pixels per byte, sent as a single data stream (command 0x10) followed by
+// a refresh (command 0x12 with a 0x00 parameter).
 func (d *Display) Show(frame *fb.Frame) error {
 	if frame.Width != d.width || frame.Height != d.height {
 		return fmt.Errorf("frame %dx%d does not match panel %dx%d", frame.Width, frame.Height, d.width, d.height)
 	}
 
-	black := packPlane(d.width, d.height, func(x, y int) bool {
-		i := y*d.width + x
-		return frame.Pix[i] >= 128 || (frame.Accent != nil && frame.Accent[i] == fb.AccentYellow)
-	})
-	color := packPlane(d.width, d.height, func(x, y int) bool {
-		i := y*d.width + x
-		return frame.Accent != nil && frame.Accent[i] != fb.AccentNone
-	})
+	data := pack4Color(d.width, d.height, frame.Pix, frame.Accent)
 
-	if err := d.sendCommand(0x10); err != nil { // DTM1: black plane
+	if err := d.sendCommand(0x10); err != nil { // DTM: 2-bit color data
 		return err
 	}
-	if err := d.sendData(black); err != nil {
-		return err
-	}
-	if err := d.sendCommand(0x13); err != nil { // DTM2: color (red/yellow) plane
-		return err
-	}
-	if err := d.sendData(color); err != nil {
+	if err := d.sendData(data); err != nil {
 		return err
 	}
 	if err := d.sendCommand(0x12); err != nil { // DRF: refresh
 		return err
 	}
+	if err := d.sendData([]byte{0x00}); err != nil {
+		return err
+	}
 	return d.waitBusy()
+}
+
+// pack4Color packs a frame into the panel's 2-bit-per-pixel format: four pixels
+// per byte, most-significant pair first. Color codes are 0=black, 1=white,
+// 2=yellow, 3=red.
+func pack4Color(width, height int, pix, accent []byte) []byte {
+	stride := (width + 3) / 4
+	out := make([]byte, stride*height)
+	for y := 0; y < height; y++ {
+		row := y * stride
+		base := y * width
+		for x := 0; x < width; x += 4 {
+			var b byte
+			for k := 0; k < 4 && x+k < width; k++ {
+				b |= pixelCode(pix[base+x+k], accent, base+x+k) << (6 - 2*k)
+			}
+			out[row+x/4] = b
+		}
+	}
+	return out
+}
+
+// pixelCode returns the 2-bit color code for a pixel: 0=black, 1=white,
+// 2=yellow, 3=red.
+func pixelCode(pix byte, accent []byte, i int) byte {
+	if accent != nil {
+		switch accent[i] {
+		case fb.AccentRed:
+			return 3
+		case fb.AccentYellow:
+			return 2
+		}
+	}
+	if pix >= 128 {
+		return 0 // black
+	}
+	return 1 // white
 }
 
 // Close puts the panel into deep sleep (best effort) and releases the SPI
 // device and GPIO pins.
 func (d *Display) Close() error {
-	// 0x07 (deep sleep) with 0xA5 (mode 1) reduces standby current; ignored if
-	// the panel revision does not support it.
+	// Deep sleep (best effort): 0x02 + 0x00 then 0x07 + 0xA5, matching the
+	// reference sleep sequence.
+	_ = d.sendCommand(0x02)
+	_ = d.sendData([]byte{0x00})
 	_ = d.sendCommand(0x07)
 	_ = d.sendData([]byte{0xA5})
 
@@ -212,10 +254,11 @@ func (d *Display) sendData(data []byte) error {
 }
 
 // waitBusy blocks until the panel's busy line is idle (or a fixed delay if the
-// busy pin is unavailable).
+// busy pin is unavailable). It matches the reference: poll every 5ms while busy,
+// then a 200ms settling delay after the line goes idle.
 func (d *Display) waitBusy() error {
 	if d.busy == nil {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		return nil
 	}
 	for i := 0; i < 10000; i++ {
@@ -228,9 +271,10 @@ func (d *Display) waitBusy() error {
 			busy = !high
 		}
 		if !busy {
+			time.Sleep(200 * time.Millisecond)
 			return nil
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	return fmt.Errorf("e-paper busy timeout")
 }

@@ -20,8 +20,8 @@ in Home Assistant.
 - Optionally reads a **separate outside temperature entity** and shows it in the
   bottom-left corner.
 - UI laid out for a **5" e-paper display** (800×480 by default, B/W "ink" style).
-- **Waveshare three-color e-paper** (black/white/red and black/white/yellow)
-  driven directly over SPI — see the Hardware section.
+- **Waveshare four-color e-paper** (black/white/red/yellow) driven directly
+  over SPI — see the Hardware section.
 - **GPIO buttons** for increase/decrease with **press-and-hold** auto-repeat
   (Linux GPIO character device, standard library only).
 - **Full-screen temperature** when the target changes; it clears and shows the
@@ -126,26 +126,22 @@ Two device backends are available (select with `-display.driver`):
 panel at `/dev/fb0`, and select the matching pixel format with
 `-display.format` (`gray8`, `rgb565`, or `mono`).
 
-**Waveshare** drives a three-color (black/white/red or black/white/yellow)
-panel directly over SPI using the panel's Data/Command, reset, and busy GPIO
-lines. It targets the SSD1680-class command set shared by Waveshare's "B"
-panels (4.2", 5.65", 5.83", and 7.5"):
+**Waveshare** drives the four-color (black/white/red/yellow) 4.26" panel
+(SKU 34061) directly over SPI using the panel's Data/Command, reset, and busy
+GPIO lines. It targets the SSD2677 controller used by the 4.26" (G) panel:
 
 ```sh
 ./thermostat -dev=false \
   -display.driver waveshare \
-  -display.panel 7in5b_v2 \
-  -display.accent red \
+  -display.panel 4in26g \
   -display.spi.device /dev/spidev0.0 \
   -display.gpio.dc 25 -display.gpio.reset 17 -display.gpio.busy 24
 ```
 
-`-display.panel` supplies the resolution (see the flag table). The accent
-(`red` or `yellow`) is used for the target temperature; the rest of the UI stays
-black. The same accent is previewed in the development window. The init
-sequence is the standard Waveshare SSD1680 reference and is parameterised by
-resolution, so an unusual panel revision may need a custom sequence in
-`internal/waveshare/panel.go`.
+`-display.panel 4in26g` supplies the 800×480 resolution (the controller
+initialises to 800×680). The panel's accent (`red` or `yellow`) is used for the
+target temperature; the rest of the UI stays black. The init sequence is the
+Waveshare SSD2677 reference from the `epd4in26g.py` sample.
 
 > The panel's native orientation must match the UI (landscape). Portrait
 > panels would additionally need a rotation step in the driver.
@@ -161,13 +157,13 @@ Run `./thermostat -h` for the full list. Notable flags:
 | `-display.width` / `-display.height` | `800` / `480` | Panel resolution |
 | `-display.format` | `gray8` | `gray8`, `rgb565`, `mono` (framebuffer) |
 | `-display.driver` | `framebuffer` | `framebuffer` or `waveshare` (device builds) |
-| `-display.panel` | *(empty)* | Waveshare preset, e.g. `7in5b_v2`, `5in83b_v2`, `4in2b_v2` |
-| `-display.accent` | `red` | Accent color for three-color panels: `red`, `yellow` |
+| `-display.panel` | *(empty)* | Waveshare preset, e.g. `4in26g` |
+| `-display.accent` | `red` | Accent color for four-color panels: `red`, `yellow` |
 | `-display.spi.device` | `/dev/spidev0.0` | SPI device for Waveshare |
 | `-display.spi.speed` | `4000000` | SPI clock speed in Hz |
 | `-display.gpiochip` | `/dev/gpiochip0` | GPIO chip device for Waveshare |
 | `-display.gpio.dc` / `.reset` / `.busy` | `25` / `17` / `24` | Waveshare control GPIO pins (BCM) |
-| `-display.gpio.busy_active_low` | `false` | Busy signal is active-low |
+| `-display.gpio.busy_active_low` | `true` | Busy signal is active-low |
 | `-ha.url` | `http://homeassistant.local:8123` | Home Assistant URL |
 | `-ha.token` | *(env `THERMOSTAT_HA_TOKEN`)* | Long-lived access token |
 | `-ha.thermostat` | `climate.thermostat` | Climate entity id |

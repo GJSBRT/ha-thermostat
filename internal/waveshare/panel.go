@@ -7,28 +7,19 @@ type command struct {
 	data []byte
 }
 
-// panel describes a Waveshare three-color (black/white/red or
-// black/white/yellow) e-paper panel. The driver uses the SSD1680-class command
-// set shared by these panels, so only the resolution differs between the
-// entries below.
+// panel describes a supported e-paper panel.
 type panel struct {
-	name   string
-	width  int
-	height int
+	name       string
+	width      int
+	height     int
+	initHeight int // controller init resolution height; 0 means same as height
 }
 
-// panelPresets maps the -display.panel flag value to a known panel resolution.
-// The init sequence below is the common SSD1680 reference sequence; specific
-// panel revisions occasionally need a different power-setting or TCON byte, so
-// this table is the place to add a custom init for an exotic panel.
+// panelPresets maps the -display.panel flag value to a known panel. The SSD2677
+// four-color panel initializes its controller to 800x680 but exposes a visible
+// 800x480 area, hence the separate init height.
 var panelPresets = []panel{
-	{name: "7in5b_v2", width: 800, height: 480},
-	{name: "7in5b_v1", width: 800, height: 480},
-	{name: "5in83b_v2", width: 600, height: 448},
-	{name: "5in65b", width: 600, height: 448},
-	{name: "4in2b_v2", width: 400, height: 300},
-	{name: "2in9b_v3", width: 296, height: 128},
-	{name: "2in13b_v4", width: 122, height: 250},
+	{name: "4in26g", width: 800, height: 480, initHeight: 680},
 }
 
 // lookupPanel returns the named preset. An empty or unknown name returns false
@@ -42,42 +33,23 @@ func lookupPanel(name string) (panel, bool) {
 	return panel{}, false
 }
 
-// initCommands builds the SSD1680-class initialization sequence for the given
-// resolution. The power-on commands (0x04) must be followed by a busy wait,
-// which the caller handles.
-//
-// The resolution (0x61) parameters are width-1 and height-1, little-endian,
-// following the SSD1680 datasheet. Panel revisions using other controllers
-// (for example the UC8179-based 7.5" B) sometimes expect the raw resolution or
-// a different byte order, so this is the place to add a custom sequence for an
-// exotic panel.
-func initCommands(width, height int) []command {
-	w := width - 1
-	h := height - 1
+// initCommands builds the SSD2677 four-color initialization sequence, following
+// the Waveshare reference init for the 4.26" (G) panel.
+func initCommands(width, initHeight int) []command {
 	return []command{
-		{cmd: 0x01, data: []byte{0x07, 0x07, 0x3F, 0x3F}}, // power setting
+		{cmd: 0x00, data: []byte{0x2B, 0x29}}, // panel setting
+		{cmd: 0x06, data: []byte{0x0F, 0x8B, 0x93, 0xA1}}, // booster soft start
+		{cmd: 0x61, data: []byte{ // resolution (controller init height)
+			byte(width >> 8), byte(width & 0xFF),
+			byte(initHeight >> 8), byte(initHeight & 0xFF),
+		}},
+		{cmd: 0x50, data: []byte{0x37}}, // VCOM and data interval
+		{cmd: 0x30, data: []byte{0x08}}, // PLL control
+		{cmd: 0x62, data: []byte{0x76, 0x76, 0x76, 0x5A, 0x9D, 0x8A, 0x76, 0x62}},
+		{cmd: 0xE3, data: []byte{0x22}}, // power saving
+		{cmd: 0xE0, data: []byte{0x10}}, // active temperature
+		{cmd: 0xE7, data: []byte{0xA1}}, // temperature sensor
+		{cmd: 0xE9, data: []byte{0x01}},
 		{cmd: 0x04}, // power on
-		{cmd: 0x00, data: []byte{0x0F}}, // panel setting: BWR mode, LUT from OTP
-		{cmd: 0x61, data: []byte{byte(w & 0xFF), byte(w >> 8), byte(h & 0xFF), byte(h >> 8)}}, // resolution
-		{cmd: 0x15, data: []byte{0x00}}, // dual SPI: disabled
-		{cmd: 0x50, data: []byte{0x11, 0x07}}, // VCOM and data interval
-		{cmd: 0x60, data: []byte{0x22}},       // TCON setting
-		{cmd: 0x04},                           // power on
 	}
-}
-
-// packPlane packs a 1-bit plane into the panel's row-major buffer: each row is
-// width/8 bytes (rounded up), MSB first, padded with zero bits on the right.
-func packPlane(width, height int, set func(x, y int) bool) []byte {
-	stride := (width + 7) / 8
-	out := make([]byte, stride*height)
-	for y := 0; y < height; y++ {
-		row := y * stride
-		for x := 0; x < width; x++ {
-			if set(x, y) {
-				out[row+x/8] |= byte(1 << uint(7-x%8))
-			}
-		}
-	}
-	return out
 }
