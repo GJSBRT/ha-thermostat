@@ -4,8 +4,8 @@
 //
 // The driver targets the SSD1680-class command set shared by Waveshare's
 // three-color "B" panels (4.2", 5.65", 5.83", and 7.5"). It is Linux-only: it
-// talks to /dev/spidev and the legacy /sys/class/gpio interface, matching the
-// button input package.
+// talks to /dev/spidev and the GPIO character device (/dev/gpiochipN), matching
+// the button input package.
 package waveshare
 
 import (
@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"gijs.eu/thermostat/internal/fb"
+	"gijs.eu/thermostat/internal/gpio"
 )
 
 // Config configures a Waveshare three-color e-paper panel.
 type Config struct {
 	SPIDevice string // e.g. /dev/spidev0.0
 	SpeedHz   int    // SPI clock; 0 means 4 MHz
+	GPIOchip  string // gpiochip device, e.g. /dev/gpiochip0
 
 	DCPin         int // Data/Command GPIO (BCM numbering)
 	ResetPin      int // reset GPIO
@@ -76,21 +78,15 @@ func New(cfg Config) (*Display, error) {
 		height:  height,
 	}
 
-	for _, pin := range []*gpioPin{d.dc, d.reset, d.busy} {
-		if err := pin.export(); err != nil {
-			spi.Close()
-			return nil, fmt.Errorf("gpio %d: %w", pin.num, err)
-		}
+	if err := d.dc.open(cfg.GPIOchip, gpio.Output, "thermostat-dc"); err != nil {
+		spi.Close()
+		return nil, err
 	}
-	if err := d.dc.direction("out"); err != nil {
+	if err := d.reset.open(cfg.GPIOchip, gpio.Output, "thermostat-reset"); err != nil {
 		d.Close()
 		return nil, err
 	}
-	if err := d.reset.direction("out"); err != nil {
-		d.Close()
-		return nil, err
-	}
-	if err := d.busy.direction("in"); err != nil {
+	if err := d.busy.open(cfg.GPIOchip, gpio.Input, "thermostat-busy"); err != nil {
 		d.Close()
 		return nil, err
 	}
@@ -182,7 +178,7 @@ func (d *Display) Close() error {
 	}
 	for _, pin := range []*gpioPin{d.dc, d.reset, d.busy} {
 		if pin != nil {
-			pin.unexport()
+			pin.close()
 		}
 	}
 	return nil

@@ -14,7 +14,7 @@ import (
 const (
 	spiIOCWrMode        = 0x40016b01 // _IOW('k', 1, uint8)
 	spiIOCWrBitsPerWord = 0x40016b03 // _IOW('k', 3, uint8)
-	spiIOCWrMaxSpeedHz  = 0x40046b05 // _IOW('k', 5, uint32)
+	spiIOCWrMaxSpeedHz  = 0x40046b04 // _IOW('k', 5, uint32)
 	spiIOCMessage1      = 0x40206b00 // _IOW('k', 0, char[32]) — one transfer
 )
 

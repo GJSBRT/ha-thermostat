@@ -20,6 +20,7 @@ type Config struct {
 
 	WSSPIDevice     string
 	WSSpeedHz       int
+	WSGPIOchip      string
 	WSDCPin         int
 	WSResetPin      int
 	WSBusyPin       int
@@ -42,6 +43,7 @@ type Config struct {
 	ButtonsEnabled  bool
 	ButtonUp        int
 	ButtonDown      int
+	ButtonGPIOchip  string
 	ButtonActiveLow bool
 	ButtonDebounce  time.Duration
 }
@@ -59,6 +61,7 @@ func Load() Config {
 
 	flag.StringVar(&c.WSSPIDevice, "display.spi.device", "/dev/spidev0.0", "SPI device for Waveshare e-paper")
 	flag.IntVar(&c.WSSpeedHz, "display.spi.speed", 4000000, "SPI clock speed in Hz")
+	flag.StringVar(&c.WSGPIOchip, "display.gpiochip", "/dev/gpiochip0", "GPIO chip device for Waveshare e-paper")
 	flag.IntVar(&c.WSDCPin, "display.gpio.dc", 25, "Data/Command GPIO pin (BCM)")
 	flag.IntVar(&c.WSResetPin, "display.gpio.reset", 17, "reset GPIO pin (BCM)")
 	flag.IntVar(&c.WSBusyPin, "display.gpio.busy", 24, "busy GPIO pin (BCM)")
@@ -81,6 +84,7 @@ func Load() Config {
 	flag.BoolVar(&c.ButtonsEnabled, "buttons.enabled", false, "enable GPIO increase/decrease buttons")
 	flag.IntVar(&c.ButtonUp, "buttons.up", 17, "GPIO number for the increase button")
 	flag.IntVar(&c.ButtonDown, "buttons.down", 27, "GPIO number for the decrease button")
+	flag.StringVar(&c.ButtonGPIOchip, "buttons.gpiochip", "/dev/gpiochip0", "GPIO chip device for buttons")
 	flag.BoolVar(&c.ButtonActiveLow, "buttons.active_low", true, "buttons are active-low (pressed reads 0)")
 	flag.DurationVar(&c.ButtonDebounce, "buttons.debounce", 25*time.Millisecond, "button sampling/debounce interval")
 

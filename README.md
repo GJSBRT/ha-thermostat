@@ -23,14 +23,14 @@ in Home Assistant.
 - **Waveshare three-color e-paper** (black/white/red and black/white/yellow)
   driven directly over SPI — see the Hardware section.
 - **GPIO buttons** for increase/decrease with **press-and-hold** auto-repeat
-  (Linux sysfs, standard library only).
+  (Linux GPIO character device, standard library only).
 - **Full-screen temperature** when the target changes; it clears and shows the
   new value large with the current room temperature as helper text.
-- Standard library as much as possible: HTTP/JSON, flags, GPIO sysfs, and the
-  framebuffer renderer all use `net/http`, `encoding/json`, `flag`, `os`, and a
-  smooth anti-aliased sans-serif font. The only external dependencies are
-  Ebiten (GUI window, cgo-free) and `golang.org/x/image` (font loading and
-  rasterization, cgo-free).
+- Standard library as much as possible: HTTP/JSON, flags, GPIO character
+  device, and the framebuffer renderer all use `net/http`, `encoding/json`,
+  `flag`, `os`, and a smooth anti-aliased sans-serif font. The only external
+  dependencies are Ebiten (GUI window, cgo-free) and `golang.org/x/image` (font
+  loading and rasterization, cgo-free).
 
 ## How it works
 
@@ -114,8 +114,8 @@ pull-ups is the common arrangement). Defaults are BCM 17 (increase) and BCM 27
 -buttons.enabled -buttons.up 17 -buttons.down 27
 ```
 
-Buttons use the legacy sysfs GPIO interface (`/sys/class/gpio`). If your kernel
-does not expose it, the program logs a warning and runs without buttons.
+Buttons use the GPIO character device interface (`/dev/gpiochipN`). Active-low
+buttons (the common arrangement) are read with the internal pull-up enabled.
 
 ### E-paper panel
 
@@ -165,6 +165,7 @@ Run `./thermostat -h` for the full list. Notable flags:
 | `-display.accent` | `red` | Accent color for three-color panels: `red`, `yellow` |
 | `-display.spi.device` | `/dev/spidev0.0` | SPI device for Waveshare |
 | `-display.spi.speed` | `4000000` | SPI clock speed in Hz |
+| `-display.gpiochip` | `/dev/gpiochip0` | GPIO chip device for Waveshare |
 | `-display.gpio.dc` / `.reset` / `.busy` | `25` / `17` / `24` | Waveshare control GPIO pins (BCM) |
 | `-display.gpio.busy_active_low` | `false` | Busy signal is active-low |
 | `-ha.url` | `http://homeassistant.local:8123` | Home Assistant URL |
@@ -176,13 +177,14 @@ Run `./thermostat -h` for the full list. Notable flags:
 | `-hold.delay` | `400ms` | Hold time before auto-repeat begins |
 | `-hold.repeat` | `200ms` | Auto-repeat interval while held |
 | `-buttons.enabled` | `false` | Enable GPIO buttons |
+| `-buttons.gpiochip` | `/dev/gpiochip0` | GPIO chip device for buttons |
 
 ## Package layout
 
 - `cmd/thermostat` — entrypoint and wiring.
 - `internal/config` — flag/env loading.
 - `internal/state` — shared display/snapshot model.
-- `internal/input` — press/release events and sysfs GPIO buttons.
+- `internal/input` — press/release events and GPIO buttons.
 - `internal/homeassistant` — REST API client (stdlib).
 - `internal/fb` — framebuffer, font rendering, layout renderer, device writer.
 - `internal/waveshare` — SPI driver for Waveshare three-color e-paper panels.

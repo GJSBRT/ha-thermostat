@@ -62,6 +62,7 @@ func main() {
 			wsd, err := waveshare.New(waveshare.Config{
 				SPIDevice:     cfg.WSSPIDevice,
 				SpeedHz:       cfg.WSSpeedHz,
+				GPIOchip:      cfg.WSGPIOchip,
 				DCPin:         cfg.WSDCPin,
 				ResetPin:      cfg.WSResetPin,
 				BusyPin:       cfg.WSBusyPin,
@@ -100,6 +101,7 @@ func main() {
 			Down:      cfg.ButtonDown,
 			ActiveLow: cfg.ButtonActiveLow,
 			Debounce:  cfg.ButtonDebounce,
+			GPIOchip:  cfg.ButtonGPIOchip,
 		}, events)
 		if err != nil {
 			log.Printf("buttons disabled: %v", err)

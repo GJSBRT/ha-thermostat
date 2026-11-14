@@ -3,10 +3,9 @@ package input
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"strings"
 	"time"
+
+	"gijs.eu/thermostat/internal/gpio"
 )
 
 // ButtonsConfig configures the two GPIO increase/decrease buttons.
@@ -15,15 +14,11 @@ type ButtonsConfig struct {
 	Down      int
 	ActiveLow bool
 	Debounce  time.Duration
+	GPIOchip  string
 }
 
-// Buttons reads two GPIO buttons through the Linux sysfs interface and emits
+// Buttons reads two GPIO buttons through the GPIO character device and emits
 // press/release events.
-//
-// NOTE: the sysfs GPIO interface (/sys/class/gpio) is deprecated on newer
-// kernels but remains available on most Raspberry Pi images. If it is not
-// present, NewButtons returns an error and the thermostat simply runs without
-// buttons.
 type Buttons struct {
 	up       *button
 	down     *button
@@ -34,10 +29,11 @@ type Buttons struct {
 type button struct {
 	num       int
 	activeLow bool
+	line      *gpio.Line
 }
 
-// NewButtons exports and configures the two GPIO pins, returning an error if
-// the sysfs interface is unavailable.
+// NewButtons requests and configures the two GPIO pins, returning an error if
+// the GPIO chip is unavailable.
 func NewButtons(cfg ButtonsConfig, events chan<- Event) (*Buttons, error) {
 	if cfg.Up == cfg.Down {
 		return nil, fmt.Errorf("increase and decrease buttons must use different GPIO pins")
@@ -53,7 +49,8 @@ func NewButtons(cfg ButtonsConfig, events chan<- Event) (*Buttons, error) {
 		debounce: cfg.Debounce,
 	}
 	for _, btn := range []*button{b.up, b.down} {
-		if err := btn.init(); err != nil {
+		if err := btn.init(cfg.GPIOchip); err != nil {
+			b.close()
 			return nil, fmt.Errorf("gpio %d: %w", btn.num, err)
 		}
 	}
@@ -97,66 +94,40 @@ func phase(pressed bool) Phase {
 
 func (b *Buttons) close() {
 	for _, btn := range []*button{b.up, b.down} {
-		btn.unexport()
+		btn.close()
 	}
 }
 
-func (b *button) init() error {
-	if err := export(b.num); err != nil {
+func (b *button) init(chip string) error {
+	line, err := gpio.Open(gpio.Config{
+		Chip:      chip,
+		Offset:    b.num,
+		Direction: gpio.Input,
+		Consumer:  "thermostat-button",
+		PullUp:    b.activeLow,
+	})
+	if err != nil {
 		return err
 	}
-	return writeSys(fmt.Sprintf("/sys/class/gpio/gpio%d/direction", b.num), "in")
+	b.line = line
+	return nil
 }
 
 // read returns the debounced "pressed" state of the button, applying polarity.
 func (b *button) read() bool {
-	data, err := os.ReadFile(fmt.Sprintf("/sys/class/gpio/gpio%d/value", b.num))
+	high, err := b.line.Get()
 	if err != nil {
 		return false
 	}
-	high := strings.TrimSpace(string(data)) == "1"
 	if b.activeLow {
 		return !high
 	}
 	return high
 }
 
-func (b *button) unexport() {
-	_ = writeSys("/sys/class/gpio/unexport", fmt.Sprintf("%d", b.num))
-}
-
-// export makes a GPIO pin available through sysfs. It is idempotent.
-func export(num int) error {
-	path := fmt.Sprintf("/sys/class/gpio/gpio%d", num)
-	if _, err := os.Stat(path); err == nil {
-		return nil // already exported
+func (b *button) close() {
+	if b.line != nil {
+		_ = b.line.Close()
+		b.line = nil
 	}
-
-	if err := writeSys("/sys/class/gpio/export", fmt.Sprintf("%d", num)); err != nil {
-		// "Device or resource busy" means another exporter already owns it.
-		if strings.Contains(err.Error(), "busy") {
-			return nil
-		}
-		return err
-	}
-
-	// Wait briefly for udev to create the sysfs node.
-	for i := 0; i < 100; i++ {
-		if _, err := os.Stat(path); err == nil {
-			return nil
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return fmt.Errorf("sysfs node %s did not appear", path)
-}
-
-// writeSys writes a value to a sysfs attribute without truncation semantics.
-func writeSys(path, value string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.WriteString(f, value)
-	return err
 }
